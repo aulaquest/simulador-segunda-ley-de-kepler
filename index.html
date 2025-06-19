@@ -59,13 +59,13 @@
                  <label for="sma-slider" class="block text-xs font-medium">Semieje Mayor (a): <span id="sma-slider-value" class="font-mono text-indigo-300"></span> UA</label>
                  <input type="range" id="sma-slider" min="0.3" max="15" step="0.1" class="w-full">
             </div>
-            <div id="ecc-slider-container">
-                 <label for="ecc-slider" class="block text-xs font-medium">Excentricidad (e): <span id="ecc-slider-value" class="font-mono text-indigo-300"></span></label>
-                 <input type="range" id="ecc-slider" min="0" max="0.95" step="0.001" class="w-full">
-            </div>
-             <div id="smb-slider-container" class="hidden">
+             <div>
                  <label for="smb-slider" class="block text-xs font-medium">Semieje Menor (b): <span id="smb-slider-value" class="font-mono text-indigo-300"></span> UA</label>
                  <input type="range" id="smb-slider" min="0.1" max="15" step="0.1" class="w-full">
+            </div>
+            <div>
+                 <label for="ecc-slider" class="block text-xs font-medium">Excentricidad (e): <span id="ecc-slider-value" class="font-mono text-indigo-300"></span></label>
+                 <input type="range" id="ecc-slider" min="0" max="0.99" step="0.001" class="w-full">
             </div>
         </div>
 
@@ -139,14 +139,12 @@
                 this.container = document.getElementById('simulation-container');
                 this.planetSelect = document.getElementById('planet-select');
                 this.fictionalControls = document.getElementById('fictional-planet-controls');
-                this.eccSlider = document.getElementById('ecc-slider');
-                this.eccSliderContainer = document.getElementById('ecc-slider-container');
                 this.smaSlider = document.getElementById('sma-slider');
                 this.smbSlider = document.getElementById('smb-slider');
-                this.smbSliderContainer = document.getElementById('smb-slider-container');
-                this.eccSliderValue = document.getElementById('ecc-slider-value');
+                this.eccSlider = document.getElementById('ecc-slider');
                 this.smaSliderValue = document.getElementById('sma-slider-value');
                 this.smbSliderValue = document.getElementById('smb-slider-value');
+                this.eccSliderValue = document.getElementById('ecc-slider-value');
                 this.divisionsInput = document.getElementById('divisions-input');
                 
                 this.smaDisplay = document.getElementById('sma-display');
@@ -295,8 +293,8 @@
                 }));
                 
                 this.smaSlider.addEventListener('input', (e) => this.handleSliderChange(e, 'a'));
-                this.eccSlider.addEventListener('input', (e) => this.handleSliderChange(e, 'e'));
                 this.smbSlider.addEventListener('input', (e) => this.handleSliderChange(e, 'b'));
+                this.eccSlider.addEventListener('input', (e) => this.handleSliderChange(e, 'e'));
             }
             
             zoom(factor) {
@@ -317,17 +315,13 @@
             handlePlanetChange() {
                 const selection = this.planetSelect.value;
                 this.params.isFictional = (selection === 'fictional');
-                this.fictionalControls.classList.remove('hidden');
+                this.fictionalControls.classList.toggle('hidden', !this.params.isFictional);
                 
                 if (this.params.isFictional) {
-                    this.eccSliderContainer.classList.add('hidden');
-                    this.smbSliderContainer.classList.remove('hidden');
                     if (this.planetSelect.previousSelection !== 'fictional') {
                         this.generateRandomFictionalPlanet();
                     }
                 } else {
-                    this.eccSliderContainer.classList.remove('hidden');
-                    this.smbSliderContainer.classList.add('hidden');
                     this.params.a_au = this.orbitalData[selection].a;
                     this.params.e = this.orbitalData[selection].e;
                 }
@@ -336,30 +330,32 @@
             }
 
             handleSliderChange(event, param) {
-                const value = parseFloat(event.target.value);
+                let value = parseFloat(event.target.value);
+                
                 if (param === 'a') {
                     this.params.a_au = value;
-                    if (this.params.isFictional) {
-                        this.smbSlider.max = value;
-                        if (parseFloat(this.smbSlider.value) > value) {
-                            this.smbSlider.value = value;
-                            this.params.b_au = value;
-                        }
+                    this.smbSlider.max = value;
+                    if (this.params.b_au > value) {
+                        this.params.b_au = value;
                     }
-                } else if (param === 'e') {
-                    this.params.e = value;
                 } else if (param === 'b') {
                     this.params.b_au = value;
+                    if (this.params.b_au < 0.1) this.params.b_au = 0.1; 
+                } else if (param === 'e') {
+                    this.params.e = value;
+                    this.params.b_au = this.params.a_au * Math.sqrt(1 - this.params.e**2);
                 }
+                
+                if (param === 'a' || param === 'b') {
+                    this.params.e = Math.sqrt(1 - (this.params.b_au**2 / this.params.a_au**2));
+                }
+
                 this.resetSimulation();
             }
 
             generateRandomFictionalPlanet() {
-                 this.params.a_au = THREE.MathUtils.randFloat(0.5, 6.0);
-                 this.params.b_au = THREE.MathUtils.randFloat(0.2, this.params.a_au);
-                 this.smaSlider.value = this.params.a_au;
-                 this.smbSlider.value = this.params.b_au;
-                 this.smbSlider.max = this.params.a_au;
+                 this.params.a_au = THREE.MathUtils.randFloat(1, 6);
+                 this.params.b_au = THREE.MathUtils.randFloat(0.5, this.params.a_au);
             }
 
             togglePause() {
@@ -427,7 +423,7 @@
                 this.camera.top = this.container.clientHeight / 2;
                 this.camera.bottom = this.container.clientHeight / -2;
                 
-                this.camera.zoom = this.container.clientWidth / (a_px * (1 + e) * 2.5);
+                this.camera.zoom = this.container.clientWidth / (a_px * (1 + e) * 3.0); 
 
                 this.camera.position.x = -c_px; 
                 
@@ -441,13 +437,12 @@
                 this.orbitLine.geometry = new THREE.BufferGeometry().setFromPoints(points);
                 
                 if (this.params.isFictional) {
+                    this.smaSlider.value = this.params.a_au;
+                    this.smbSlider.value = this.params.b_au;
+                    this.eccSlider.value = this.params.e;
                     this.smaSliderValue.textContent = a_au.toFixed(2);
                     this.smbSliderValue.textContent = b_au.toFixed(2);
-                } else {
-                    this.smaSlider.value = a_au;
-                    this.eccSlider.value = e;
-                    this.smaSliderValue.textContent = a_au.toFixed(2);
-                    this.eccSliderValue.textContent = e.toFixed(4);
+                    this.eccSliderValue.textContent = e.toFixed(3);
                 }
                 
                 this.camera.updateProjectionMatrix();
@@ -466,6 +461,15 @@
                 const apoapsisPos = -a_px - c_px;
                 this.periapsisMarker.position.set(periapsisPos, 25 / this.camera.zoom, 0);
                 this.apoapsisMarker.position.set(apoapsisPos, 25 / this.camera.zoom, 0);
+
+                let bodyScale;
+                if (a_au < 1.0) {
+                    bodyScale = THREE.MathUtils.clamp(1.2 / (a_au + 0.2), 0.8, 1.5);
+                } else {
+                    bodyScale = THREE.MathUtils.clamp(2 / (a_au + 1), 0.4, 2.0);
+                }
+                this.sun.scale.set(bodyScale, bodyScale, bodyScale);
+                this.planet.scale.set(bodyScale * 0.5, bodyScale * 0.5, bodyScale * 0.5);
 
                 this.updateVisuals();
             }
@@ -569,7 +573,6 @@
             
             finalizeDivisionMesh(division) {
                 if (division.points.length === 0) {
-                     // Get start and end points
                     const startPos = this.getPlanetPositionAtTime(division.startTime);
                     const endPos = this.getPlanetPositionAtTime(division.endTime);
                     division.points.push(startPos, endPos);
