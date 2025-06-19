@@ -11,7 +11,7 @@
         body { font-family: 'Inter', sans-serif; overflow-x: hidden; }
         @media (max-width: 767px) { body { overflow-y: auto; } }
         @media (min-width: 768px) { body { overflow-y: hidden; } }
-        #simulation-container { cursor: grab; }
+        #simulation-container { cursor: grab; touch-action: none; }
         #simulation-container:active { cursor: grabbing; }
         .control-panel select, .control-panel button {
             background-color: #374151;
