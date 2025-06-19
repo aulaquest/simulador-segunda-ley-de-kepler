@@ -270,6 +270,10 @@
             setupEventListeners() {
                 window.addEventListener('resize', () => this.onWindowResize());
                 
+                this.container.addEventListener('touchmove', (e) => {
+                    e.preventDefault();
+                }, { passive: false });
+
                 this.planetSelect.addEventListener('change', () => this.handlePlanetChange());
                 
                 ['velocity-vector-check', 'gravity-vector-check', 'show-chart-check', 'apoapsis-check', 'periapsis-check', 'show-values-check'].forEach(id => {
@@ -340,7 +344,7 @@
                     if (new_b > new_a) new_b = new_a;
                 } else if (param === 'b') {
                     new_b = value;
-                    if (new_b < 0.1) new_b = 0.1;
+                    if (new_b < 0.1) new_b = 0.1; 
                     if (new_b > new_a) new_b = new_a;
                 } else if (param === 'e') {
                     new_e = value;
