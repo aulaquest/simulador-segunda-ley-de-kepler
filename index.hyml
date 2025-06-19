@@ -1,0 +1,752 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simulación de la 2ª Ley de Kepler (Estilo PhET)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; overflow-x: hidden; }
+        @media (max-width: 767px) { body { overflow-y: auto; } }
+        @media (min-width: 768px) { body { overflow-y: hidden; } }
+        #simulation-container { cursor: grab; }
+        #simulation-container:active { cursor: grabbing; }
+        .control-panel select, .control-panel button {
+            background-color: #374151;
+            border: 1px solid #4b5563;
+            transition: background-color 0.2s, border-color 0.2s;
+        }
+        .control-panel select:hover, .control-panel button:hover {
+            background-color: #4b5563;
+            border-color: #6b7280;
+        }
+        .control-panel button.active { background-color: #4f46e5; border-color: #6366f1; }
+        .control-panel .separator { height: 1px; background-color: #374151; margin: 1rem 0; }
+        .info-panel { background-color: rgba(17, 24, 39, 0.85); backdrop-filter: blur(5px); }
+        input[type=range] { -webkit-appearance: none; background: transparent; }
+        input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; height: 16px; width: 16px; border-radius: 50%; background: #a78bfa; cursor: pointer; margin-top: -6px; }
+        input[type=range]::-webkit-slider-runnable-track { width: 100%; height: 4px; cursor: pointer; background: #4b5563; border-radius: 5px; }
+        
+        .chart-container, .orbital-data-panel { background-color: rgba(17, 24, 39, 0.5); border-radius: 8px; padding: 0.75rem; }
+        .chart-container text { font-family: 'Inter', sans-serif; fill: #d1d5db; font-size: 10px; }
+        .chart-container .axis-line { stroke: #4b5563; stroke-width: 1; }
+        .chart-container .grid-line { stroke: #374151; stroke-width: 0.5; }
+    </style>
+</head>
+<body class="bg-gray-900 text-gray-200 flex flex-col md:flex-row md:h-screen">
+
+    <!-- Main Content Area: 60% width on desktop -->
+    <div class="w-full md:w-3/5 flex flex-col">
+        <div id="simulation-container" class="relative h-[58vh] md:h-auto md:flex-1"></div>
+        <footer class="p-2 text-center text-xs text-gray-500 z-20">
+            Simulación creada por <a href="https://aulaquest.com" target="_blank" rel="noopener noreferrer" class="underline hover:text-indigo-400">Aulaquest</a>
+        </footer>
+    </div>
+
+    <!-- Controls Panel: 40% width on desktop -->
+    <div class="w-full md:w-2/5 bg-gray-800/80 backdrop-blur-sm p-4 overflow-y-auto control-panel space-y-4 text-sm z-10">
+        <h2 class="text-base font-bold text-white text-center">Control de Simulación</h2>
+
+        <div>
+            <label for="planet-select" class="block font-medium mb-1">Cuerpo Celeste:</label>
+            <select id="planet-select" class="w-full p-2 rounded-md text-white"></select>
+        </div>
+        
+        <div id="fictional-planet-controls" class="hidden space-y-3 pt-2">
+            <div>
+                 <label for="sma-slider" class="block text-xs font-medium">Semieje Mayor (a): <span id="sma-slider-value" class="font-mono text-indigo-300"></span> UA</label>
+                 <input type="range" id="sma-slider" min="0.3" max="15" step="0.1" class="w-full">
+            </div>
+            <div id="ecc-slider-container">
+                 <label for="ecc-slider" class="block text-xs font-medium">Excentricidad (e): <span id="ecc-slider-value" class="font-mono text-indigo-300"></span></label>
+                 <input type="range" id="ecc-slider" min="0" max="0.95" step="0.001" class="w-full">
+            </div>
+             <div id="smb-slider-container" class="hidden">
+                 <label for="smb-slider" class="block text-xs font-medium">Semieje Menor (b): <span id="smb-slider-value" class="font-mono text-indigo-300"></span> UA</label>
+                 <input type="range" id="smb-slider" min="0.1" max="15" step="0.1" class="w-full">
+            </div>
+        </div>
+
+        <div class="separator"></div>
+        
+        <h3 class="font-bold text-sm">Segunda Ley de Kepler</h3>
+        <div class="space-y-3 pt-1">
+             <div>
+                <label for="divisions-input" class="block text-xs font-medium mb-2">Divisiones del Período:</label>
+                <div class="flex items-center space-x-2">
+                    <button id="divisions-minus" class="px-3 py-1 bg-indigo-600 hover:bg-indigo-700 rounded-md">-</button>
+                    <input type="text" id="divisions-input" value="4" class="w-full text-center bg-gray-700 rounded-md p-1 font-mono" readonly>
+                    <button id="divisions-plus" class="px-3 py-1 bg-indigo-600 hover:bg-indigo-700 rounded-md">+</button>
+                </div>
+            </div>
+        </div>
+        
+        <div id="chart-container" class="chart-container mt-2">
+            <svg id="area-chart" class="w-full h-32"></svg>
+        </div>
+
+        <div id="orbital-data-panel" class="orbital-data-panel mt-2 space-y-1 text-xs">
+            <p>Semieje Mayor (a): <span id="sma-display" class="font-mono text-gray-300">0.00</span> UA</p>
+            <p>Semieje Menor (b): <span id="smb-display" class="font-mono text-gray-300">0.00</span> UA</p>
+             <p>Excentricidad (e): <span id="ecc-display" class="font-mono text-gray-300">0.0000</span></p>
+            <p>Área Total: <span id="total-area-display" class="font-mono text-gray-300">0.00</span> UA²</p>
+            <p class="font-semibold text-white">Velocidad Areolar: <span id="areal-velocity-display" class="font-mono text-pink-300">0.00</span> UA²/año</p>
+        </div>
+
+
+        <div class="separator"></div>
+        
+        <h3 class="font-bold text-sm">Visualización</h3>
+        <div class="space-y-2">
+            <label class="flex items-center"><input type="checkbox" id="velocity-vector-check" checked class="mr-2 accent-green-500">Vector Velocidad</label>
+            <label class="flex items-center"><input type="checkbox" id="gravity-vector-check" class="mr-2 accent-blue-500">Vector Fuerza</label>
+            <label class="flex items-center"><input type="checkbox" id="apoapsis-check" class="mr-2 accent-red-500">Marcar Apoapsis</label>
+            <label class="flex items-center"><input type="checkbox" id="periapsis-check" class="mr-2 accent-cyan-500">Marcar Periapsis</label>
+            <label class="flex items-center"><input type="checkbox" id="show-values-check" checked class="mr-2 accent-yellow-500">Mostrar Valores (Área/Tiempo)</label>
+            <label class="flex items-center"><input type="checkbox" id="show-chart-check" checked class="mr-2 accent-indigo-500">Mostrar Gráfica de Áreas</label>
+        </div>
+        
+        <div class="separator"></div>
+
+        <h3 class="font-bold text-sm">Velocidad Simulación</h3>
+        <div class="flex justify-between items-center bg-gray-700 rounded-full p-1">
+             <button id="speed-slow" class="speed-btn px-4 py-1 w-full rounded-full transition-colors">Lento</button>
+             <button id="speed-normal" class="speed-btn px-4 py-1 w-full rounded-full transition-colors active">Normal</button>
+             <button id="speed-fast" class="speed-btn px-4 py-1 w-full rounded-full transition-colors">Rápido</button>
+        </div>
+        
+        <div class="separator"></div>
+
+        <h3 class="font-bold text-sm">Controles</h3>
+        <div class="grid grid-cols-2 gap-2">
+            <button id="pause-resume-btn" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-3 rounded-lg">Pausa</button>
+            <button id="reset-btn" class="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-3 rounded-lg">Reiniciar</button>
+        </div>
+         <div class="grid grid-cols-2 gap-2 mt-2">
+            <button id="zoom-in-btn" class="w-full bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-3 rounded-lg">Zoom +</button>
+            <button id="zoom-out-btn" class="w-full bg-gray-600 hover:bg-gray-700 text-white font-bold py-2 px-3 rounded-lg">Zoom -</button>
+        </div>
+    </div>
+    
+    <script type="module">
+        class OrbitalSimulation {
+            constructor() {
+                this.PIXELS_PER_AU = 100;
+                this.SUN_RADIUS_AU = 0.05;
+
+                this.container = document.getElementById('simulation-container');
+                this.planetSelect = document.getElementById('planet-select');
+                this.fictionalControls = document.getElementById('fictional-planet-controls');
+                this.eccSlider = document.getElementById('ecc-slider');
+                this.eccSliderContainer = document.getElementById('ecc-slider-container');
+                this.smaSlider = document.getElementById('sma-slider');
+                this.smbSlider = document.getElementById('smb-slider');
+                this.smbSliderContainer = document.getElementById('smb-slider-container');
+                this.eccSliderValue = document.getElementById('ecc-slider-value');
+                this.smaSliderValue = document.getElementById('sma-slider-value');
+                this.smbSliderValue = document.getElementById('smb-slider-value');
+                this.divisionsInput = document.getElementById('divisions-input');
+                
+                this.smaDisplay = document.getElementById('sma-display');
+                this.smbDisplay = document.getElementById('smb-display');
+                this.eccDisplay = document.getElementById('ecc-display');
+                this.totalAreaDisplay = document.getElementById('total-area-display');
+                this.arealVelocityDisplay = document.getElementById('areal-velocity-display');
+
+                this.isPaused = false;
+                this.time = 0;
+                this.simulationSpeed = 1;
+                this.animationFrameId = null;
+                
+                this.numDivisions = 4;
+                this.divisionsData = [];
+                this.sweepColors = [0x4f46e5, 0xdb2777, 0x16a34a, 0xd97706, 0x0ea5e9, 0x8b5cf6, 0xdc2626, 0xf59e0b, 0x65a30d, 0x2563eb, 0x9333ea, 0xbe185d];
+                this.totalEllipseArea = 0;
+                this.period = 0;
+
+                this.orbitalData = {
+                    'mercury': { name: 'Mercurio', a: 0.387, e: 0.2056 },
+                    'venus':   { name: 'Venus',    a: 0.723, e: 0.0067 },
+                    'earth':   { name: 'Tierra',   a: 1.000, e: 0.0167 },
+                    'mars':    { name: 'Marte',    a: 1.524, e: 0.0934 },
+                    'jupiter': { name: 'Júpiter',  a: 5.203, e: 0.0484 },
+                    'halley':  { name: 'Cometa Halley', a: 17.834, e: 0.967 },
+                };
+                this.params = { a_au: 1, e: 0.0167 }; 
+
+                this.init();
+            }
+            
+            init() {
+                this.setupThreeJS();
+                this.createAreaChart();
+                this.populateSelect();
+                this.createUI();
+                this.setupEventListeners();
+                this.handlePlanetChange();
+                this.animate();
+            }
+            
+            setupThreeJS() {
+                this.scene = new THREE.Scene();
+                this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+                this.camera = new THREE.OrthographicCamera(this.container.clientWidth / -2, this.container.clientWidth / 2, this.container.clientHeight / 2, this.container.clientHeight / -2, 1, 10000);
+                this.renderer.setSize(this.container.clientWidth, this.container.clientHeight);
+                this.renderer.setPixelRatio(window.devicePixelRatio);
+                this.container.appendChild(this.renderer.domElement);
+                this.camera.position.z = 5000;
+
+                const starsGeometry = new THREE.BufferGeometry();
+                const starVertices = [];
+                for (let i = 0; i < 10000; i++) starVertices.push(THREE.MathUtils.randFloatSpread(8000), THREE.MathUtils.randFloatSpread(8000), THREE.MathUtils.randFloatSpread(8000));
+                starsGeometry.setAttribute('position', new THREE.Float32BufferAttribute(starVertices, 3));
+                this.scene.add(new THREE.Points(starsGeometry, new THREE.PointsMaterial({ color: 0xffffff, size: 1.0 })));
+                
+                this.sun = this.createSun();
+                this.planet = this.createPlanet();
+                this.orbitLine = new THREE.Line(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: 0x6b7280 }));
+                
+                this.vectorsGroup = new THREE.Group();
+                this.sweptAreasGroup = new THREE.Group();
+                this.apsisMarkersGroup = new THREE.Group();
+                this.divisionLabelsGroup = new THREE.Group();
+
+                this.velocityArrow = new THREE.ArrowHelper(new THREE.Vector3(1,0,0), new THREE.Vector3(0,0,0), 1, 0x34d399, 15, 8);
+                this.gravityArrow = new THREE.ArrowHelper(new THREE.Vector3(1,0,0), new THREE.Vector3(0,0,0), 1, 0x42a5f5, 15, 8);
+                this.vectorsGroup.add(this.velocityArrow, this.gravityArrow);
+
+                this.periapsisMarker = this.createTextSprite('Periapsis', '#06b6d4', 20);
+                this.apoapsisMarker = this.createTextSprite('Apoapsis', '#ef4444', 20);
+                this.apsisMarkersGroup.add(this.periapsisMarker, this.apoapsisMarker);
+
+                this.scene.add(this.sun, this.planet, this.orbitLine, this.vectorsGroup, this.sweptAreasGroup, this.apsisMarkersGroup, this.divisionLabelsGroup);
+            }
+
+            createSun() {
+                const sunGeometry = new THREE.SphereGeometry(8, 32, 32);
+                const sunMaterial = new THREE.MeshBasicMaterial({ color: 0xffd700, depthTest: false });
+                const sun = new THREE.Mesh(sunGeometry, sunMaterial);
+                const haloGeo = new THREE.SphereGeometry(12, 32, 32);
+                const haloMat = new THREE.MeshBasicMaterial({ color: 0xffd700, transparent: true, opacity: 0.2, side: THREE.BackSide });
+                sun.add(new THREE.Mesh(haloGeo, haloMat));
+                sun.renderOrder = 10;
+                return sun;
+            }
+
+            createPlanet() {
+                const planetGeometry = new THREE.SphereGeometry(4, 32, 32);
+                const planetMaterial = new THREE.MeshBasicMaterial({ color: 0x60a5fa });
+                return new THREE.Mesh(planetGeometry, planetMaterial);
+            }
+
+            populateSelect() {
+                for (const key in this.orbitalData) {
+                    const option = document.createElement('option');
+                    option.value = key;
+                    option.textContent = this.orbitalData[key].name;
+                    this.planetSelect.appendChild(option);
+                }
+                const fictionalOption = document.createElement('option');
+                fictionalOption.value = 'fictional';
+                fictionalOption.textContent = 'Planeta Ficticio';
+                this.planetSelect.appendChild(fictionalOption);
+                this.planetSelect.value = 'earth';
+            }
+
+            createUI() {
+                const panel = document.createElement('div');
+                panel.className = "info-panel absolute top-2 left-2 p-2 rounded-lg text-xs space-y-1 z-10";
+                panel.innerHTML = `
+                    <p>Distancia Sol: <span id="distance-value" class="font-mono text-indigo-300">0.00</span> UA</p>
+                    <p>Velocidad: <span id="velocity-value" class="font-mono text-green-300">0.00</span> km/s</p>
+                    <p>Tiempo: <span id="time-value" class="font-mono text-yellow-300">0.00</span> años</p>
+                `;
+                this.container.appendChild(panel);
+                this.distanceValue = document.getElementById('distance-value');
+                this.velocityValue = document.getElementById('velocity-value');
+                this.timeValue = document.getElementById('time-value');
+            }
+            
+            setupEventListeners() {
+                window.addEventListener('resize', () => this.onWindowResize());
+                
+                this.planetSelect.addEventListener('change', () => this.handlePlanetChange());
+                
+                ['velocity-vector-check', 'gravity-vector-check', 'show-chart-check', 'apoapsis-check', 'periapsis-check', 'show-values-check'].forEach(id => {
+                    document.getElementById(id).addEventListener('change', () => this.updateVisuals());
+                });
+
+                document.getElementById('divisions-plus').addEventListener('click', () => this.changeDivisions(1));
+                document.getElementById('divisions-minus').addEventListener('click', () => this.changeDivisions(-1));
+                
+                document.getElementById('pause-resume-btn').addEventListener('click', () => this.togglePause());
+                document.getElementById('reset-btn').addEventListener('click', () => this.resetSimulation());
+                document.getElementById('zoom-in-btn').addEventListener('click', () => this.zoom(1.25));
+                document.getElementById('zoom-out-btn').addEventListener('click', () => this.zoom(0.8));
+
+                const speedButtons = document.querySelectorAll('.speed-btn');
+                const speedMap = { 'speed-slow': 0.5, 'speed-normal': 1, 'speed-fast': 3 };
+                speedButtons.forEach(btn => btn.addEventListener('click', () => {
+                    this.simulationSpeed = speedMap[btn.id];
+                    speedButtons.forEach(b => b.classList.remove('active'));
+                    btn.classList.add('active');
+                }));
+                
+                this.smaSlider.addEventListener('input', (e) => this.handleSliderChange(e, 'a'));
+                this.eccSlider.addEventListener('input', (e) => this.handleSliderChange(e, 'e'));
+                this.smbSlider.addEventListener('input', (e) => this.handleSliderChange(e, 'b'));
+            }
+            
+            zoom(factor) {
+                this.camera.zoom *= factor;
+                this.camera.updateProjectionMatrix();
+            }
+
+            changeDivisions(amount) {
+                let current = parseInt(this.divisionsInput.value);
+                current += amount;
+                if (current < 1) current = 1;
+                if (current > 12) current = 12;
+                this.divisionsInput.value = current;
+                this.numDivisions = current;
+                this.resetSimulation();
+            }
+
+            handlePlanetChange() {
+                const selection = this.planetSelect.value;
+                this.params.isFictional = (selection === 'fictional');
+                this.fictionalControls.classList.remove('hidden');
+                
+                if (this.params.isFictional) {
+                    this.eccSliderContainer.classList.add('hidden');
+                    this.smbSliderContainer.classList.remove('hidden');
+                    if (this.planetSelect.previousSelection !== 'fictional') {
+                        this.generateRandomFictionalPlanet();
+                    }
+                } else {
+                    this.eccSliderContainer.classList.remove('hidden');
+                    this.smbSliderContainer.classList.add('hidden');
+                    this.params.a_au = this.orbitalData[selection].a;
+                    this.params.e = this.orbitalData[selection].e;
+                }
+                this.planetSelect.previousSelection = selection;
+                this.resetSimulation();
+            }
+
+            handleSliderChange(event, param) {
+                const value = parseFloat(event.target.value);
+                if (param === 'a') {
+                    this.params.a_au = value;
+                    if (this.params.isFictional) {
+                        this.smbSlider.max = value;
+                        if (parseFloat(this.smbSlider.value) > value) {
+                            this.smbSlider.value = value;
+                            this.params.b_au = value;
+                        }
+                    }
+                } else if (param === 'e') {
+                    this.params.e = value;
+                } else if (param === 'b') {
+                    this.params.b_au = value;
+                }
+                this.resetSimulation();
+            }
+
+            generateRandomFictionalPlanet() {
+                 this.params.a_au = THREE.MathUtils.randFloat(0.5, 6.0);
+                 this.params.b_au = THREE.MathUtils.randFloat(0.2, this.params.a_au);
+                 this.smaSlider.value = this.params.a_au;
+                 this.smbSlider.value = this.params.b_au;
+                 this.smbSlider.max = this.params.a_au;
+            }
+
+            togglePause() {
+                this.isPaused = !this.isPaused;
+                document.getElementById('pause-resume-btn').textContent = this.isPaused ? "Reanudar" : "Pausa";
+            }
+
+            resetSimulation() {
+                this.time = 0;
+                this.clearDivisions();
+                this.updateOrbitAndStaticVisuals(); 
+                this.initializeDivisions();
+                this.update(true); 
+                if (this.isPaused) this.togglePause();
+            }
+            
+            solveKeplerEquation(M, e) {
+                let E = M;
+                for (let i = 0; i < 7; i++) { E = E - (E - e * Math.sin(E) - M) / (1 - e * Math.cos(E)); }
+                return E;
+            }
+            
+            update(isReset = false) {
+                const { a_au, e } = this.params;
+                if (a_au <= 0 || this.period <= 0) return;
+                
+                const M = (2 * Math.PI / this.period) * this.time;
+                const E = this.solveKeplerEquation(M, e);
+                if (isNaN(E)) return; 
+                
+                const r_au = a_au * (1 - e * Math.cos(E));
+                const v_rad = 2 * Math.atan2(Math.sqrt(1 + e) * Math.sin(E / 2), Math.sqrt(1 - e) * Math.cos(E / 2));
+                
+                this.planet.position.set(r_au * Math.cos(v_rad) * this.PIXELS_PER_AU, r_au * Math.sin(v_rad) * this.PIXELS_PER_AU, 0);
+
+                this.updateAreaDivisions();
+                this.updateVectors(E, r_au);
+                
+                this.distanceValue.textContent = r_au.toFixed(4);
+                this.timeValue.textContent = (this.time).toFixed(2);
+                
+                this.time += (this.period / 2000) * this.simulationSpeed;
+                if (this.time > this.period) {
+                    this.time = this.time % this.period;
+                    this.clearDivisions();
+                    this.initializeDivisions();
+                }
+            }
+            
+            updateOrbitAndStaticVisuals() {
+                if (this.params.isFictional) {
+                    this.params.e = Math.sqrt(1 - (this.params.b_au**2 / this.params.a_au**2));
+                }
+
+                const { a_au, e } = this.params;
+                if (!a_au || a_au <= 0) return;
+
+                const a_px = a_au * this.PIXELS_PER_AU;
+                const b_px = a_px * Math.sqrt(1 - e*e);
+                const b_au = b_px / this.PIXELS_PER_AU;
+                const c_px = a_px * e;
+                
+                this.camera.left = this.container.clientWidth / -2;
+                this.camera.right = this.container.clientWidth / 2;
+                this.camera.top = this.container.clientHeight / 2;
+                this.camera.bottom = this.container.clientHeight / -2;
+                
+                this.camera.zoom = this.container.clientWidth / (a_px * (1 + e) * 2.5);
+
+                this.camera.position.x = -c_px; 
+                
+                const points = [];
+                for (let i = 0; i <= 360; i++) {
+                    const theta = (i * Math.PI) / 180;
+                    const r = (a_px * (1 - e * e)) / (1 + e * Math.cos(theta));
+                    points.push(new THREE.Vector3(r * Math.cos(theta), r * Math.sin(theta), 0));
+                }
+                this.orbitLine.geometry.dispose();
+                this.orbitLine.geometry = new THREE.BufferGeometry().setFromPoints(points);
+                
+                if (this.params.isFictional) {
+                    this.smaSliderValue.textContent = a_au.toFixed(2);
+                    this.smbSliderValue.textContent = b_au.toFixed(2);
+                } else {
+                    this.smaSlider.value = a_au;
+                    this.eccSlider.value = e;
+                    this.smaSliderValue.textContent = a_au.toFixed(2);
+                    this.eccSliderValue.textContent = e.toFixed(4);
+                }
+                
+                this.camera.updateProjectionMatrix();
+                
+                this.period = Math.sqrt(Math.pow(a_au, 3));
+                this.totalEllipseArea = Math.PI * a_au * b_au;
+                const arealVelocity = this.totalEllipseArea / this.period;
+                
+                this.smaDisplay.textContent = a_au.toFixed(4);
+                this.smbDisplay.textContent = b_au.toFixed(4);
+                this.eccDisplay.textContent = e.toFixed(4);
+                this.totalAreaDisplay.textContent = this.totalEllipseArea.toFixed(4);
+                this.arealVelocityDisplay.textContent = arealVelocity.toFixed(4);
+
+                const periapsisPos = a_px - c_px;
+                const apoapsisPos = -a_px - c_px;
+                this.periapsisMarker.position.set(periapsisPos, 25 / this.camera.zoom, 0);
+                this.apoapsisMarker.position.set(apoapsisPos, 25 / this.camera.zoom, 0);
+
+                this.updateVisuals();
+            }
+            
+            updateVectors(E, r_au) {
+                const v_kms = 29.78 * Math.sqrt((2 / r_au) - (1 / this.params.a_au));
+                this.velocityValue.textContent = isNaN(v_kms) ? '...' : v_kms.toFixed(2);
+
+                if (isNaN(E)) return;
+                
+                const scale = 1 / this.camera.zoom;
+                const forceMagnitude = 40 * scale;
+                const velocityMagnitude = (35 + v_kms * 1.5) * scale;
+                const headLength = Math.max(8, 10 * scale);
+                const headWidth = Math.max(4, 5 * scale);
+
+                this.gravityArrow.position.copy(this.planet.position);
+                const planetGravityDir = new THREE.Vector3().subVectors(this.sun.position, this.planet.position).normalize();
+                this.gravityArrow.setDirection(planetGravityDir);
+                this.gravityArrow.setLength(forceMagnitude, headLength, headWidth);
+
+                this.velocityArrow.position.copy(this.planet.position);
+                const velDir = new THREE.Vector3(-Math.sin(E), Math.sqrt(1 - this.params.e**2) * Math.cos(E), 0).normalize();
+                this.velocityArrow.setDirection(velDir);
+                this.velocityArrow.setLength(velocityMagnitude, headLength, headWidth);
+            }
+
+            updateVisuals() {
+                this.vectorsGroup.visible = document.getElementById('velocity-vector-check').checked || document.getElementById('gravity-vector-check').checked;
+                this.gravityArrow.visible = document.getElementById('gravity-vector-check').checked;
+                this.velocityArrow.visible = document.getElementById('velocity-vector-check').checked;
+                document.getElementById('chart-container').style.display = document.getElementById('show-chart-check').checked ? 'block' : 'none';
+                
+                this.apoapsisMarker.visible = document.getElementById('apoapsis-check').checked;
+                this.periapsisMarker.visible = document.getElementById('periapsis-check').checked;
+                this.divisionLabelsGroup.visible = document.getElementById('show-values-check').checked;
+            }
+            
+            clearDivisions() {
+                this.divisionsData.forEach(div => {
+                    if (div.mesh) {
+                        div.mesh.geometry.dispose();
+                        div.mesh.material.dispose();
+                    }
+                    if (div.labelSprite) {
+                        div.labelSprite.material.map.dispose();
+                        div.labelSprite.material.dispose();
+                    }
+                });
+                while(this.sweptAreasGroup.children.length > 0) this.sweptAreasGroup.remove(this.sweptAreasGroup.children[0]);
+                while(this.divisionLabelsGroup.children.length > 0) this.divisionLabelsGroup.remove(this.divisionLabelsGroup.children[0]);
+                this.divisionsData = [];
+            }
+
+            initializeDivisions() {
+                if (this.period <= 0) return;
+                const timeInterval = this.period / this.numDivisions;
+                for (let i = 0; i < this.numDivisions; i++) {
+                    const labelSprite = this.createTextSprite('', '#ffffff', 20);
+                    labelSprite.visible = false;
+                    this.divisionLabelsGroup.add(labelSprite);
+                    this.divisionsData.push({
+                        startTime: i * timeInterval,
+                        endTime: (i + 1) * timeInterval,
+                        points: [],
+                        area: 0,
+                        mesh: null,
+                        color: this.sweepColors[i % this.sweepColors.length],
+                        labelSprite: labelSprite,
+                        isComplete: false,
+                    });
+                }
+            }
+            
+            updateAreaDivisions() {
+                if (this.divisionsData.length === 0) return;
+
+                const currentDivisionIndex = Math.min(this.numDivisions - 1, Math.floor(this.time / (this.period / this.numDivisions)));
+                
+                for(let i = 0; i < this.numDivisions; i++) {
+                    const division = this.divisionsData[i];
+                    if (i < currentDivisionIndex && !division.isComplete) {
+                        division.area = this.totalEllipseArea / this.numDivisions;
+                        this.finalizeDivisionMesh(division);
+                        this.updateDivisionLabel(division);
+                        division.isComplete = true;
+                    }
+                }
+
+                const division = this.divisionsData[currentDivisionIndex];
+                if (!division || division.isComplete) return;
+
+                division.points.push(this.planet.position.clone());
+                
+                const timeInDivision = this.time - division.startTime;
+                division.area = (this.totalEllipseArea / this.period) * timeInDivision;
+
+                this.updateDivisionMesh(division);
+                this.updateDivisionLabel(division);
+            }
+            
+            finalizeDivisionMesh(division) {
+                if (division.points.length === 0) {
+                     // Get start and end points
+                    const startPos = this.getPlanetPositionAtTime(division.startTime);
+                    const endPos = this.getPlanetPositionAtTime(division.endTime);
+                    division.points.push(startPos, endPos);
+                }
+                this.updateDivisionMesh(division, true);
+            }
+
+            updateDivisionMesh(division, isFinal = false) {
+                 if (division.mesh) {
+                    this.sweptAreasGroup.remove(division.mesh);
+                    division.mesh.geometry.dispose();
+                 }
+                const shape = new THREE.Shape();
+                shape.moveTo(this.sun.position.x, this.sun.position.y);
+                division.points.forEach(p => shape.lineTo(p.x, p.y));
+                if (isFinal) {
+                   shape.lineTo(this.sun.position.x, this.sun.position.y);
+                }
+
+                const geometry = new THREE.ShapeGeometry(shape);
+                const material = new THREE.MeshBasicMaterial({ color: division.color, transparent: true, opacity: 0.5, side: THREE.DoubleSide });
+                division.mesh = new THREE.Mesh(geometry, material);
+                this.sweptAreasGroup.add(division.mesh);
+            }
+
+            updateDivisionLabel(division) {
+                 if(division.labelSprite) {
+                    division.labelSprite.visible = true;
+                    const timeInterval = this.period / this.numDivisions;
+                    const text = `A: ${division.area.toFixed(2)}\nΔt: ${timeInterval.toFixed(2)}`;
+                    this.updateTextSprite(division.labelSprite, text, '#ffffff', 20);
+
+                    if (division.points.length > 0) {
+                        const midIndex = Math.floor(division.points.length / 2);
+                        const midPointOnArc = division.points[midIndex];
+                        const direction = midPointOnArc.clone().normalize();
+                        const offset = 40 / this.camera.zoom;
+                        division.labelSprite.position.copy(midPointOnArc).add(direction.multiplyScalar(offset));
+                    }
+                }
+            }
+
+            getPlanetPositionAtTime(time) {
+                const M = (2 * Math.PI / this.period) * time;
+                const E = this.solveKeplerEquation(M, this.params.e);
+                const r_au = this.params.a_au * (1 - this.params.e * Math.cos(E));
+                const v_rad = 2 * Math.atan2(Math.sqrt(1 + this.params.e) * Math.sin(E / 2), Math.sqrt(1 - this.params.e) * Math.cos(E / 2));
+                return new THREE.Vector3(r_au * Math.cos(v_rad) * this.PIXELS_PER_AU, r_au * Math.sin(v_rad) * this.PIXELS_PER_AU, 0);
+            }
+            
+            createAreaChart() {
+                this.chart = {
+                    svg: document.getElementById('area-chart'),
+                    margin: { top: 15, right: 10, bottom: 20, left: 35 },
+                };
+                const bounds = this.chart.svg.getBoundingClientRect();
+                this.chart.width = bounds.width - this.chart.margin.left - this.chart.margin.right;
+                this.chart.height = bounds.height - this.chart.margin.top - this.chart.margin.bottom;
+
+                this.chart.svg.innerHTML = `
+                    <g transform="translate(${this.chart.margin.left},${this.chart.margin.top})">
+                        <g class="x-axis"></g> <g class="y-axis"></g> <g class="grid"></g> <g class="bars"></g>
+                        <text class="y-label" transform="rotate(-90)" y="-30" x="${-this.chart.height/2}" text-anchor="middle" style="font-size:10px;">
+                            <tspan>Área (UA</tspan><tspan dy="-0.3em" font-size="9px">2</tspan><tspan dy="0.3em">)</tspan>
+                        </text>
+                    </g>
+                `;
+            }
+
+            updateAreaChart() {
+                if (!document.getElementById('show-chart-check').checked || this.numDivisions === 0) return;
+
+                const maxArea = this.totalEllipseArea / this.numDivisions;
+                if (maxArea <= 0 || !isFinite(maxArea)) return;
+
+                const { svg, margin, width, height } = this.chart;
+                const barsGroup = svg.querySelector('.bars');
+                const xAxisGroup = svg.querySelector('.x-axis');
+                const yAxisGroup = svg.querySelector('.y-axis');
+                const gridGroup = svg.querySelector('.grid');
+
+                const xScale = (i) => (i / this.numDivisions) * width + (width / this.numDivisions) * 0.1;
+                const barWidth = (width / this.numDivisions) * 0.8;
+                const yScale = (area) => height - (area / maxArea) * height;
+
+                barsGroup.innerHTML = ''; xAxisGroup.innerHTML = ''; yAxisGroup.innerHTML = ''; gridGroup.innerHTML = '';
+
+                yAxisGroup.innerHTML = `<line class="axis-line" x1="0" y1="0" x2="0" y2="${height}"></line>`;
+                for (let i = 0; i <= 4; i++) {
+                    const y = height * (i/4);
+                    const areaVal = maxArea * (1 - i/4);
+                    gridGroup.innerHTML += `<line class="grid-line" x1="0" y1="${y}" x2="${width}" y2="${y}"></line>`;
+                    yAxisGroup.innerHTML += `<text x="-5" y="${y+3}" text-anchor="end">${areaVal.toFixed(2)}</text>`;
+                }
+
+                xAxisGroup.innerHTML = `<line class="axis-line" x1="0" y1="${height}" x2="${width}" y2="${height}"></line>`;
+
+                this.divisionsData.forEach((div, i) => {
+                    const x = xScale(i); const y = yScale(div.area); const h = height - y;
+                    const color = `#${new THREE.Color(div.color).getHexString()}`;
+                    barsGroup.innerHTML += `<rect x="${x}" y="${y}" width="${barWidth}" height="${h}" fill="${color}" opacity="0.8"></rect>`;
+                    xAxisGroup.innerHTML += `<text x="${x + barWidth/2}" y="${height + 12}" text-anchor="middle">${i+1}</text>`;
+                });
+            }
+
+            createTextSprite(message, color, fontSize = 14) {
+                const canvas = document.createElement('canvas');
+                const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(canvas), depthTest: false, transparent: true }));
+                this.updateTextSprite(sprite, message, color, fontSize);
+                return sprite;
+            }
+
+            updateTextSprite(sprite, message, color, fontSize) {
+                const canvas = sprite.material.map.image;
+                const context = canvas.getContext('2d');
+                const lines = message.split('\n');
+                context.font = `Bold ${fontSize}px Inter`;
+                const metrics = context.measureText(lines.reduce((a, b) => a.length > b.length ? a : b, ''));
+                const textWidth = metrics.width;
+                const lineHeight = fontSize + 8;
+                
+                canvas.width = this.nextPowerOfTwo(textWidth + 20);
+                canvas.height = this.nextPowerOfTwo(lines.length * lineHeight);
+
+                context.font = `Bold ${fontSize}px Inter`;
+                context.textAlign = "center";
+                context.textBaseline = "middle";
+                context.clearRect(0, 0, canvas.width, canvas.height);
+
+                lines.forEach((line, index) => {
+                    const yPos = (canvas.height / 2) + (index - (lines.length - 1) / 2) * lineHeight;
+                    context.strokeStyle = 'rgba(0,0,0,0.9)';
+                    context.lineWidth = 5;
+                    context.lineJoin = 'round';
+                    context.strokeText(line, canvas.width / 2, yPos);
+                    context.fillStyle = color;
+                    context.fillText(line, canvas.width / 2, yPos);
+                });
+
+                sprite.material.map.needsUpdate = true;
+                if (!sprite.userData.baseScale) sprite.userData.baseScale = {};
+                sprite.userData.baseScale.x = canvas.width * 0.45; 
+                sprite.userData.baseScale.y = canvas.height * 0.45;
+            }
+            
+            nextPowerOfTwo(n) { return Math.pow(2, Math.ceil(Math.log(n) / Math.log(2))); }
+            
+            updateLabelsScale() {
+                this.apsisMarkersGroup.children.forEach(sprite => {
+                    if (sprite && sprite.userData.baseScale) {
+                        sprite.scale.set(sprite.userData.baseScale.x / this.camera.zoom, sprite.userData.baseScale.y / this.camera.zoom, 1.0);
+                    }
+                });
+                this.divisionLabelsGroup.children.forEach(sprite => {
+                     if (sprite && sprite.userData.baseScale) {
+                        sprite.scale.set(sprite.userData.baseScale.x / this.camera.zoom, sprite.userData.baseScale.y / this.camera.zoom, 1.0);
+                    }
+                });
+            }
+
+            animate() {
+                this.animationFrameId = requestAnimationFrame(() => this.animate());
+                if (!this.isPaused) this.update();
+                this.updateLabelsScale();
+                this.updateAreaChart();
+                this.renderer.render(this.scene, this.camera);
+            }
+
+            onWindowResize() {
+                this.renderer.setSize(this.container.clientWidth, this.container.clientHeight);
+                this.createAreaChart();
+                this.updateOrbitAndStaticVisuals();
+            }
+        }
+        
+        window.onload = () => new OrbitalSimulation();
+
+    </script>
+</body>
+</html>
