@@ -331,24 +331,38 @@
 
             handleSliderChange(event, param) {
                 let value = parseFloat(event.target.value);
-                
+                let new_a = this.params.a_au;
+                let new_b = this.params.b_au;
+                let new_e = this.params.e;
+
                 if (param === 'a') {
-                    this.params.a_au = value;
-                    this.smbSlider.max = value;
-                    if (this.params.b_au > value) {
-                        this.params.b_au = value;
-                    }
+                    new_a = value;
+                    if (new_b > new_a) new_b = new_a;
                 } else if (param === 'b') {
-                    this.params.b_au = value;
-                    if (this.params.b_au < 0.1) this.params.b_au = 0.1; 
+                    new_b = value;
+                    if (new_b < 0.1) new_b = 0.1;
+                    if (new_b > new_a) new_b = new_a;
                 } else if (param === 'e') {
-                    this.params.e = value;
-                    this.params.b_au = this.params.a_au * Math.sqrt(1 - this.params.e**2);
+                    new_e = value;
                 }
                 
                 if (param === 'a' || param === 'b') {
-                    this.params.e = Math.sqrt(1 - (this.params.b_au**2 / this.params.a_au**2));
+                    new_e = Math.sqrt(1 - (new_b**2 / new_a**2));
+                } else if (param === 'e') {
+                    new_b = new_a * Math.sqrt(1 - new_e**2);
                 }
+
+                const periapsis = new_a * (1 - new_e);
+                if (periapsis <= this.SUN_RADIUS_AU) {
+                    this.smaSlider.value = this.params.a_au;
+                    this.smbSlider.value = this.params.b_au;
+                    this.eccSlider.value = this.params.e;
+                    return; 
+                }
+                
+                this.params.a_au = new_a;
+                this.params.b_au = new_b;
+                this.params.e = new_e;
 
                 this.resetSimulation();
             }
